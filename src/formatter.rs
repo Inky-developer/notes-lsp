@@ -141,6 +141,9 @@ static REPLACEMENTS: phf::Map<&'static str, &'static str> = phf_map! {
     "C" => "ℂ",
     "P" => "ℙ",
     "F" => "𝔽",
+    // Some additional uncategorized symbols
+    "blank" => "␣",
+    "start" => "►",
 };
 
 pub fn search_replacements(search: &str) -> impl Iterator<Item = (&'static str, &'static str)> {
