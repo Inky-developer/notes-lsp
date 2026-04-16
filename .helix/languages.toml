@@ -1,0 +1,8 @@
+[language-server.notes-lsp]
+command = "cargo"
+args = ["run", "--quiet"]
+
+[[language]]
+name = "markdown"
+language-servers = ["notes-lsp"]
+auto-format = true
