@@ -10,7 +10,10 @@ use tower_lsp_server::{
     ls_types::*,
 };
 
-use crate::{cursor::Cursor, formatter::search_replacements};
+use crate::{
+    formatter::search_replacements,
+    syntax::{SyntaxKind, parse},
+};
 
 struct Backend {
     client: Client,
@@ -85,38 +88,31 @@ impl LanguageServer for Backend {
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        let content = self.read_file(params.text_document_position.text_document.uri)?;
-        let cursor = Cursor::from(content.as_str());
-        // lets find the offset in the current file
-        let mut cursor =
-            cursor.skip_while(|(pos, _, _)| *pos != params.text_document_position.position);
-        let Some((_, offset, _)) = cursor.next() else {
-            return Err(Error::invalid_params(
-                "Could not read at the specified position",
-            ));
-        };
-        // then read back until the starting slash is found
-        let chars = content[..offset].char_indices().rev();
-        for (index, char) in chars {
-            match char {
-                '\\' => {
-                    // found trigger position, return suggestions
-                    let text = &content[index..offset];
-                    let suggestions = search_replacements(text);
-                    let completions = suggestions.map(|(k, v)| CompletionItem {
-                        label: k.to_string(),
-                        kind: Some(CompletionItemKind::TEXT),
-                        detail: Some(v.to_string()),
-                        ..Default::default()
-                    });
-                    return Ok(Some(CompletionResponse::Array(completions.collect())));
-                }
-                char if char.is_whitespace() => return Ok(None),
-                _ => {}
-            }
+        fn range_contains(range: Range, position: Position) -> bool {
+            position >= range.start && position < range.end
         }
 
-        Ok(None)
+        let content = self.read_file(params.text_document_position.text_document.uri)?;
+        let syntax = parse(&content);
+        let Some((_, node)) = syntax
+            .iter()
+            .find(|(range, _)| range_contains(*range, params.text_document_position.position))
+        else {
+            return Ok(None);
+        };
+        match node.kind {
+            SyntaxKind::Value { ident } => {
+                let suggestions = search_replacements(ident);
+                let completions = suggestions.map(|(k, v)| CompletionItem {
+                    label: k.to_string(),
+                    kind: Some(CompletionItemKind::TEXT),
+                    detail: Some(v.to_string()),
+                    ..Default::default()
+                });
+                Ok(Some(CompletionResponse::Array(completions.collect())))
+            }
+            SyntaxKind::Text => Ok(None),
+        }
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
