@@ -35,7 +35,7 @@ impl<'a, 'b> Iterator for SyntaxIter<'a, 'b> {
         let start = self.start;
         let end = add_position(start, node.text);
         self.start = end;
-        Some((dbg!(Range::new(start, end)), node))
+        Some((Range::new(start, end), node))
     }
 }
 
