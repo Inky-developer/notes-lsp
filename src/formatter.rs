@@ -1,5 +1,5 @@
 use phf::phf_map;
-use tower_lsp_server::ls_types::TextEdit;
+use tower_lsp_server::ls_types::{CompletionItem, CompletionItemKind, TextEdit};
 
 use crate::syntax::{SyntaxKind, parse};
 
@@ -7,16 +7,69 @@ pub fn format(input: &str) -> Vec<TextEdit> {
     let syntax = parse(input);
     syntax
         .iter()
-        .filter_map(|(range, node)| match node.kind {
-            SyntaxKind::Text => None,
-            SyntaxKind::Value { ident } => find_replacement(ident)
-                .map(|replacement| TextEdit::new(range, replacement.to_string())),
+        .filter_map(|(range, node)| {
+            let replacement = match node.kind {
+                SyntaxKind::Text => None,
+                SyntaxKind::Value { ident } => VALUE_REPLACEMENTS.get(ident).copied(),
+                SyntaxKind::Super { ident } => SUPER_REPLACEMENTS.get(&ident).copied(),
+                SyntaxKind::Sub { ident } => SUB_REPLACEMENTS.get(&ident).copied(),
+            }?;
+            Some(TextEdit::new(range, replacement.to_string()))
         })
         .collect()
 }
 
+pub fn get_completions(kind: &SyntaxKind) -> Vec<CompletionItem> {
+    match kind {
+        SyntaxKind::Value { ident } => {
+            let suggestions = VALUE_REPLACEMENTS
+                .entries()
+                .map(|(k, v)| (*k, *v))
+                .filter(move |(key, _)| key.starts_with(ident));
+            let completions = suggestions.map(|(k, v)| CompletionItem {
+                label: k.to_string(),
+                kind: Some(CompletionItemKind::TEXT),
+                detail: Some(v.to_string()),
+                ..Default::default()
+            });
+            completions.collect()
+        }
+        SyntaxKind::Super { ident } => {
+            if SUPER_REPLACEMENTS.contains_key(ident) {
+                Vec::new()
+            } else {
+                SUPER_REPLACEMENTS
+                    .entries()
+                    .map(|(k, v)| CompletionItem {
+                        label: k.to_string(),
+                        kind: Some(CompletionItemKind::TEXT),
+                        detail: Some(v.to_string()),
+                        ..Default::default()
+                    })
+                    .collect()
+            }
+        }
+        SyntaxKind::Sub { ident } => {
+            if SUB_REPLACEMENTS.contains_key(ident) {
+                Vec::new()
+            } else {
+                SUB_REPLACEMENTS
+                    .entries()
+                    .map(|(k, v)| CompletionItem {
+                        label: k.to_string(),
+                        kind: Some(CompletionItemKind::TEXT),
+                        detail: Some(v.to_string()),
+                        ..Default::default()
+                    })
+                    .collect()
+            }
+        }
+        SyntaxKind::Text => Vec::new(),
+    }
+}
+
 // The keys must all be alphanumeric due to the implementationof format
-static REPLACEMENTS: phf::Map<&'static str, &'static str> = phf_map! {
+static VALUE_REPLACEMENTS: phf::Map<&'static str, &'static str> = phf_map! {
     // Lowercase Greek letters
     "alpha" => "α",
     "beta" => "β",
@@ -115,14 +168,30 @@ static REPLACEMENTS: phf::Map<&'static str, &'static str> = phf_map! {
     "start" => "►",
 };
 
-pub fn search_replacements(search: &str) -> impl Iterator<Item = (&'static str, &'static str)> {
-    let search = search.strip_prefix("\\").unwrap_or(search);
-    REPLACEMENTS
-        .entries()
-        .map(|(k, v)| (*k, *v))
-        .filter(move |(key, _)| key.starts_with(search))
-}
+static SUPER_REPLACEMENTS: phf::Map<char, &'static str> = phf_map! {
+    '0' => "⁰",
+    '1' => "¹",
+    '2' => "²",
+    '3' => "³",
+    '4' => "⁴",
+    '5' => "⁵",
+    '6' => "⁶",
+    '7' => "⁷",
+    '8' => "⁸",
+    '9' => "⁹",
+    'a' => "ᵃ",
+};
 
-fn find_replacement(input: &str) -> Option<&'static str> {
-    REPLACEMENTS.get(input).copied()
-}
+static SUB_REPLACEMENTS: phf::Map<char, &'static str> = phf_map! {
+    '0' => "₀",
+    '1' => "₁",
+    '2' => "₂",
+    '3' => "₃",
+    '4' => "₄",
+    '5' => "₅",
+    '6' => "₆",
+    '7' => "₇",
+    '8' => "₈",
+    '9' => "₉",
+    'a' => "ₐ",
+};

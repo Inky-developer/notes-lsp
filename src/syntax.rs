@@ -6,6 +6,8 @@ use crate::cursor::Cursor;
 pub enum SyntaxKind<'a> {
     Text,
     Value { ident: &'a str },
+    Super { ident: char },
+    Sub { ident: char },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -27,7 +29,11 @@ impl<'a, 'b> Iterator for SyntaxIter<'a, 'b> {
             let relative_pos = Cursor::from(text).run_to_end();
             Position {
                 line: position.line + relative_pos.line,
-                character: position.character + relative_pos.character,
+                character: if relative_pos.line == 0 {
+                    position.character + relative_pos.character
+                } else {
+                    relative_pos.character
+                },
             }
         }
 
@@ -92,7 +98,7 @@ impl<'a> Parser<'a> {
     }
 
     fn is_start_of_node(&self) -> bool {
-        matches!(self.peek(), '\\')
+        matches!(self.peek(), '\\' | '^' | '_')
     }
 
     fn parse_node(&mut self) -> SyntaxNode<'a> {
@@ -100,6 +106,8 @@ impl<'a> Parser<'a> {
         // Must be kept in sync with is_start_of_node
         let kind = match self.peek() {
             '\\' => self.parse_escape(),
+            '^' => self.parse_super(),
+            '_' => self.parse_sub(),
             _ => self.parse_text(),
         };
         // end will be calculated later
@@ -120,7 +128,7 @@ impl<'a> Parser<'a> {
         self.consume();
 
         // Allow escaping of backslashes
-        if self.peek() == '\\' {
+        if self.is_start_of_node() {
             self.consume();
             return SyntaxKind::Text;
         }
@@ -132,6 +140,18 @@ impl<'a> Parser<'a> {
 
         let ident = &self.input[ident_start..self.cursor.offset];
         SyntaxKind::Value { ident }
+    }
+
+    fn parse_super(&mut self) -> SyntaxKind<'a> {
+        self.consume();
+        let char = self.consume();
+        SyntaxKind::Super { ident: char }
+    }
+
+    fn parse_sub(&mut self) -> SyntaxKind<'a> {
+        self.consume();
+        let char = self.consume();
+        SyntaxKind::Sub { ident: char }
     }
 }
 

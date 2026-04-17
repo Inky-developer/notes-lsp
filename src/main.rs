@@ -10,10 +10,7 @@ use tower_lsp_server::{
     ls_types::*,
 };
 
-use crate::{
-    formatter::search_replacements,
-    syntax::{SyntaxKind, parse},
-};
+use crate::{formatter::get_completions, syntax::parse};
 
 struct Backend {
     client: Client,
@@ -94,25 +91,22 @@ impl LanguageServer for Backend {
 
         let content = self.read_file(params.text_document_position.text_document.uri)?;
         let syntax = parse(&content);
+        // The actual cursor position can often be the first character after the current node
+        let position = Position::new(
+            params.text_document_position.position.line,
+            params
+                .text_document_position
+                .position
+                .character
+                .saturating_sub(1),
+        );
         let Some((_, node)) = syntax
             .iter()
-            .find(|(range, _)| range_contains(*range, params.text_document_position.position))
+            .find(|(range, _)| range_contains(*range, position))
         else {
             return Ok(None);
         };
-        match node.kind {
-            SyntaxKind::Value { ident } => {
-                let suggestions = search_replacements(ident);
-                let completions = suggestions.map(|(k, v)| CompletionItem {
-                    label: k.to_string(),
-                    kind: Some(CompletionItemKind::TEXT),
-                    detail: Some(v.to_string()),
-                    ..Default::default()
-                });
-                Ok(Some(CompletionResponse::Array(completions.collect())))
-            }
-            SyntaxKind::Text => Ok(None),
-        }
+        Ok(Some(CompletionResponse::Array(get_completions(&node.kind))))
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
