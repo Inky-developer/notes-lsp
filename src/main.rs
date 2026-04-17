@@ -1,5 +1,6 @@
 mod cursor;
 mod formatter;
+mod syntax;
 
 use std::{collections::HashMap, sync::Mutex};
 
@@ -121,7 +122,7 @@ impl LanguageServer for Backend {
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = params.text_document.uri;
         let contents = self.read_file(uri)?;
-        let edits = crate::formatter::format(contents);
+        let edits = crate::formatter::format(&contents);
         Ok(Some(edits))
     }
 }

@@ -8,12 +8,6 @@ pub struct Cursor<'a> {
     pub offset: usize,
 }
 
-impl<'a> Cursor<'a> {
-    pub fn as_str(&self) -> &'a str {
-        self.chars.as_str()
-    }
-}
-
 impl<'a> From<&'a str> for Cursor<'a> {
     fn from(value: &'a str) -> Self {
         Self {

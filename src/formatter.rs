@@ -1,49 +1,18 @@
 use phf::phf_map;
-use tower_lsp_server::ls_types::{Position, Range, TextEdit};
+use tower_lsp_server::ls_types::TextEdit;
 
-use crate::cursor::Cursor;
+use crate::syntax::{SyntaxKind, parse};
 
-pub fn format(mut input: String) -> Vec<TextEdit> {
-    fn find_candidates(cursor: Cursor, mut on_candidate: impl FnMut(&str, Range)) {
-        let input = cursor.as_str();
-        let mut start_pos: Option<(usize, Position)> = None;
-        for (position, offset, char) in cursor {
-            match (start_pos, char) {
-                (None, '\\') => {
-                    start_pos = Some((offset, position));
-                }
-                (Some((start, start_position)), char) if !char.is_ascii_alphanumeric() => {
-                    if char == '\\'
-                        && start_position.line == position.line
-                        && start_position.character + 1 == position.character
-                    {
-                        // escape
-                        start_pos = None;
-                        continue;
-                    }
-                    let range = Range::new(start_position, position);
-                    let view = &input[start..offset];
-                    on_candidate(view, range);
-                    start_pos = if char == '\\' {
-                        Some((offset, position))
-                    } else {
-                        None
-                    };
-                }
-                _ => {}
-            }
-        }
-    }
-
-    let mut results = Vec::new();
-    // Add zero at the end so that the last candidate will be found
-    input.push(char::MIN);
-    find_candidates(Cursor::from(input.as_str()), |candidate, range| {
-        if let Some(replacement) = find_replacement(candidate) {
-            results.push(TextEdit::new(range, replacement.to_string()));
-        }
-    });
-    results
+pub fn format(input: &str) -> Vec<TextEdit> {
+    let syntax = parse(input);
+    syntax
+        .iter()
+        .filter_map(|(range, node)| match node.kind {
+            SyntaxKind::Text => None,
+            SyntaxKind::Value { ident } => find_replacement(ident)
+                .map(|replacement| TextEdit::new(range, replacement.to_string())),
+        })
+        .collect()
 }
 
 // The keys must all be alphanumeric due to the implementationof format
@@ -155,6 +124,5 @@ pub fn search_replacements(search: &str) -> impl Iterator<Item = (&'static str, 
 }
 
 fn find_replacement(input: &str) -> Option<&'static str> {
-    let input = input.strip_prefix("\\").expect("Should have that prefix!");
     REPLACEMENTS.get(input).copied()
 }
