@@ -11,7 +11,6 @@ pub enum SyntaxKind<'a> {
 #[derive(Debug, PartialEq, Eq)]
 pub struct SyntaxNode<'a> {
     pub text: &'a str,
-    pub end_exclusive: Position,
     pub kind: SyntaxKind<'a>,
 }
 
@@ -24,10 +23,19 @@ impl<'a, 'b> Iterator for SyntaxIter<'a, 'b> {
     type Item = (Range, &'b SyntaxNode<'a>);
 
     fn next(&mut self) -> Option<Self::Item> {
+        pub fn add_position(position: Position, text: &str) -> Position {
+            let relative_pos = Cursor::from(text).run_to_end();
+            Position {
+                line: position.line + relative_pos.line,
+                character: position.character + relative_pos.character,
+            }
+        }
+
         let node = self.nodes.next()?;
         let start = self.start;
-        self.start = node.end_exclusive;
-        Some((Range::new(start, node.end_exclusive), node))
+        let end = add_position(start, node.text);
+        self.start = end;
+        Some((dbg!(Range::new(start, end)), node))
     }
 }
 
@@ -61,15 +69,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn peek(&self) -> (char, Position) {
-        let char = self.input[self.cursor.offset..]
+    fn peek(&self) -> char {
+        self.input[self.cursor.offset..]
             .chars()
             .next()
-            .unwrap_or('\0');
-        (char, self.cursor.pos)
+            .unwrap_or('\0')
     }
 
-    fn consume(&mut self) -> (char, Position) {
+    fn consume(&mut self) -> char {
         let char = self.peek();
         self.cursor.next();
         char
@@ -77,7 +84,7 @@ impl<'a> Parser<'a> {
 
     fn parse(&mut self) -> Vec<SyntaxNode<'a>> {
         let mut result = Vec::new();
-        while self.peek().0 != '\0' {
+        while self.peek() != '\0' {
             let node = self.parse_node();
             result.push(node);
         }
@@ -85,26 +92,25 @@ impl<'a> Parser<'a> {
     }
 
     fn is_start_of_node(&self) -> bool {
-        matches!(self.peek().0, '\\')
+        matches!(self.peek(), '\\')
     }
 
     fn parse_node(&mut self) -> SyntaxNode<'a> {
         let start = self.cursor.offset;
         // Must be kept in sync with is_start_of_node
-        let kind = match self.peek().0 {
+        let kind = match self.peek() {
             '\\' => self.parse_escape(),
             _ => self.parse_text(),
         };
         // end will be calculated later
         SyntaxNode {
             text: &self.input[start..self.cursor.offset],
-            end_exclusive: self.peek().1,
             kind,
         }
     }
 
     fn parse_text(&mut self) -> SyntaxKind<'a> {
-        while self.peek().0 != '\0' && !self.is_start_of_node() {
+        while self.peek() != '\0' && !self.is_start_of_node() {
             self.consume();
         }
         SyntaxKind::Text
@@ -114,13 +120,13 @@ impl<'a> Parser<'a> {
         self.consume();
 
         // Allow escaping of backslashes
-        if self.peek().0 == '\\' {
+        if self.peek() == '\\' {
             self.consume();
             return SyntaxKind::Text;
         }
 
         let ident_start = self.cursor.offset;
-        while self.peek().0.is_ascii_alphanumeric() {
+        while self.peek().is_ascii_alphanumeric() {
             self.consume();
         }
 
@@ -131,8 +137,6 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use tower_lsp_server::ls_types::Position;
-
     use crate::syntax::{SyntaxKind, SyntaxNode, parse};
 
     #[test]
@@ -141,7 +145,6 @@ mod tests {
             parse("Hello World!").0,
             vec![SyntaxNode {
                 text: "Hello World!",
-                end_exclusive: Position::new(0, 12),
                 kind: SyntaxKind::Text
             }]
         )
@@ -154,17 +157,14 @@ mod tests {
             vec![
                 SyntaxNode {
                     text: "Hello ",
-                    end_exclusive: Position::new(0, 6),
                     kind: SyntaxKind::Text
                 },
                 SyntaxNode {
                     text: "\\World",
-                    end_exclusive: Position::new(0, 12),
                     kind: SyntaxKind::Value { ident: "World" }
                 },
                 SyntaxNode {
                     text: "!",
-                    end_exclusive: Position::new(0, 13),
                     kind: SyntaxKind::Text
                 }
             ]

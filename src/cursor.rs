@@ -8,6 +8,13 @@ pub struct Cursor<'a> {
     pub offset: usize,
 }
 
+impl<'a> Cursor<'a> {
+    pub fn run_to_end(&mut self) -> Position {
+        for _ in &mut *self {}
+        self.pos
+    }
+}
+
 impl<'a> From<&'a str> for Cursor<'a> {
     fn from(value: &'a str) -> Self {
         Self {
