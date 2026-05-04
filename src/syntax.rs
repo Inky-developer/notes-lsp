@@ -196,7 +196,12 @@ impl<'a> Parser<'a> {
     fn parse_sub(&mut self) -> SyntaxKind<'a> {
         self.consume();
         let char = self.consume();
-        SyntaxKind::Sub { ident: char }
+        // Heuristic to not replace characters in underscore words, like `parse_sub`
+        if !self.peek().is_ascii_alphanumeric() || SUB_REPLACEMENTS.contains_key(&self.peek()) {
+            SyntaxKind::Sub { ident: char }
+        } else {
+            SyntaxKind::Text
+        }
     }
 }
 
