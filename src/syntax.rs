@@ -195,9 +195,10 @@ impl<'a> Parser<'a> {
 
     fn parse_sub(&mut self) -> SyntaxKind<'a> {
         self.consume();
-        let char = self.consume();
+
         // Heuristic to not replace characters in underscore words, like `parse_sub`
-        if !self.peek().is_ascii_alphanumeric() {
+        if !self.peek().is_ascii_alphanumeric() && self.peek() != '\\' {
+            let char = self.consume();
             SyntaxKind::Sub { ident: char }
         } else {
             SyntaxKind::Text
@@ -276,17 +277,16 @@ pub(super) static VALUE_REPLACEMENTS: phf::Map<&'static str, &'static str> = phf
     "therefore" => "∴",
     "because" => "∵",
     "qed" => "∎",
+    "xor" => "⊕",
     // Set theory
     "intersect" => "∩",
     "union" => "∪",
     "subset" => "⊂",
-    "notsubset" => "⊄",
     "subseteq" => "⊆",
-    "notsubseteq" => "⊈",
+    "subsetnoteq" => "⊊",
     "supset" => "⊃",
-    "notsupset" => "⊅",
     "supseteq" => "⊇",
-    "notsupseteq" => "⊉",
+    "supsetnoteq" => "⊋",
     "emptyset" => "∅",
     "setminus" => "∖",
     // Calculus and analysis
@@ -433,6 +433,27 @@ mod tests {
                 SyntaxNode {
                     text: "!",
                     kind: SyntaxKind::Text
+                }
+            ]
+        )
+    }
+
+    #[test]
+    fn test_parses_escape_in_sub() {
+        assert_eq!(
+            parse("a_\\delta").0,
+            vec![
+                SyntaxNode {
+                    text: "a",
+                    kind: SyntaxKind::Text
+                },
+                SyntaxNode {
+                    text: "_",
+                    kind: SyntaxKind::Text
+                },
+                SyntaxNode {
+                    text: "\\delta",
+                    kind: SyntaxKind::Value { ident: "delta" }
                 }
             ]
         )
