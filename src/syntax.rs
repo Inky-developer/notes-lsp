@@ -197,8 +197,10 @@ impl<'a> Parser<'a> {
         self.consume();
 
         // Heuristic to not replace characters in underscore words, like `parse_sub`
-        if !self.peek().is_ascii_alphanumeric() && self.peek() != '\\' {
-            let char = self.consume();
+        if self.peek().is_ascii_alphanumeric()
+            && let char = self.consume()
+            && !self.peek().is_ascii_alphanumeric()
+        {
             SyntaxKind::Sub { ident: char }
         } else {
             SyntaxKind::Text
@@ -457,5 +459,22 @@ mod tests {
                 }
             ]
         )
+    }
+
+    #[test]
+    fn test_parses_basic_escape() {
+        assert_eq!(
+            parse("a_b").0,
+            vec![
+                SyntaxNode {
+                    text: "a",
+                    kind: SyntaxKind::Text
+                },
+                SyntaxNode {
+                    text: "_b",
+                    kind: SyntaxKind::Sub { ident: 'b' }
+                }
+            ]
+        );
     }
 }
